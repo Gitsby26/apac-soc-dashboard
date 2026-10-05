@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APAC Threat Intelligence SOC Dashboard</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            grid-template-rows: auto 1fr;
+            gap: 20px;
+            height: 95vh;
+        }
+
+        /* Header */
+        header {
+            grid-column: 1 / -1;
+            background-color: #161b22;
+            padding: 15px 25px;
+            border-radius: 8px;
+            border: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: #58a6ff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #8b949e;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            background-color: #238636;
+            border-radius: 50%;
+            animation: pulse-green 2s infinite;
+        }
+
+        /* Map Container */
+        #map-container {
+            background-color: #161b22;
+            border-radius: 8px;
+            border: 1px solid #30363d;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            background-color: #0d1117;
+        }
+
+        /* Right Panel (KRIs & Feed) */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* KRIs */
+        .kri-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .kri-box {
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .kri-box h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.8rem;
+            color: #8b949e;
+            text-transform: uppercase;
+        }
+
+        .kri-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ff7b72;
+        }
+
+        /* Threat Feed */
+        .feed-container {
+            flex-grow: 1;
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .feed-header {
+            background-color: #21262d;
+            padding: 10px 15px;
+            font-weight: bold;
+            border-bottom: 1px solid #30363d;
+            color: #58a6ff;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .feed-content {
+            padding: 10px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .feed-item {
+            padding: 12px 10px;
+            border-bottom: 1px solid #30363d;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .feed-item:last-child {
+            border-bottom: none;
+        }
+
+        .severity-Critical { border-left: 4px solid #f85149; }
+        .severity-High { border-left: 4px solid #ff7b72; }
+        .severity-Moderate { border-left: 4px solid #d29922; }
+
+        /* Animations */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(35, 134, 54, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(35, 134, 54, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(35, 134, 54, 0); }
+        }
+        @keyframes pulse-critical {
+            0% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(248, 81, 73, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0); }
+        }
+        @keyframes pulse-high {
+            0% { box-shadow: 0 0 0 0 rgba(255, 123, 114, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(255, 123, 114, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 123, 114, 0); }
+        }
+        @keyframes pulse-moderate {
+            0% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(210, 153, 34, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0); }
+        }
+        
+        .marker-critical { background-color: #f85149; border-radius: 50%; width: 12px; height: 12px; animation: pulse-critical 2s infinite; }
+        .marker-high { background-color: #ff7b72; border-radius: 50%; width: 12px; height: 12px; animation: pulse-high 2s infinite; }
+        .marker-moderate { background-color: #d29922; border-radius: 50%; width: 12px; height: 12px; animation: pulse-moderate 2s infinite; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <h1>APAC SOC Intelligence Engine</h1>
+            <span style="font-size: 0.8rem; color: #8b949e;">Automated via GitHub Actions & Gemini API</span>
+        </div>
+        <div class="status-indicator">
+            <div class="status-dot"></div>
+            <span id="last-updated">Fetching Latest Intel...</span>
+        </div>
+    </header>
+
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
+
+    <div class="right-panel">
+        <div class="kri-container">
+            <div class="kri-box">
+                <h3>Total Incidents Tracked</h3>
+                <div class="kri-value" id="kri-total" style="color: #58a6ff;">0</div>
+            </div>
+            <div class="kri-box">
+                <h3>Critical Threats</h3>
+                <div class="kri-value" id="kri-critical">0</div>
+            </div>
+        </div>
+
+        <div class="feed-container">
+            <div class="feed-header">
+                Live Intelligence Feed 
+            </div>
+            <div class="feed-content" id="feed-content">
+                <div style="padding: 20px; text-align: center; color: #8b949e;">
+                    Loading data.json...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // --- 1. Initialize Map ---
+        const map = L.map('map').setView([5.0, 115.0], 4); 
+        const threatLayer = L.layerGroup().addTo(map);
+
+        // --- CARTO Basemap with API Key ---
+        L.tileLayer('https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key=cb1_488s_1_23fc58c95a6ee3ab8ddf0c8a', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            maxZoom: 20
+        }).addTo(map);
+
+        // --- 2. Fetch and Render Live GitHub Data ---
+        async function fetchLiveThreatData() {
+            try {
+                // Fetch the JSON file generated by the GitHub Action. 
+                // We add a timestamp parameter to prevent browser caching.
+                const response = await fetch(`data.json?t=${new Date().getTime()}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const rawData = await response.json();
+                
+                // Clear old data
+                threatLayer.clearLayers();
+                document.getElementById('feed-content').innerHTML = '';
+                
+                let criticalCount = 0;
+                
+                // Process Incidents
+                rawData.incidents.forEach(incident => {
+                    if (incident.severity === 'Critical') criticalCount++;
+                    
+                    // Render Map Marker
+                    const cssClass = `marker-${incident.severity.toLowerCase()}`;
+                    const icon = L.divIcon({ className: 'custom-icon', html: `<div class="${cssClass}"></div>`, iconSize: [12, 12] });
+                    
+                    const marker = L.marker([incident.latitude, incident.longitude], { icon: icon }).bindPopup(`
+                        <div style="color:#333; font-family:sans-serif;">
+                            <h4 style="margin:0 0 5px 0;">${incident.title}</h4>
+                            <p style="margin:0; font-size:11px; font-weight:bold;">${incident.location}</p>
+                            <span style="background-color: ${incident.severity==='Critical'?'#f85149':incident.severity==='High'?'#ff7b72':'#d29922'}; color:white; padding:2px 6px; border-radius:3px; font-size:10px;">${incident.severity}</span>
+                            <p style="margin-top:8px; font-size:12px;">${incident.summary}</p>
+                        </div>
+                    `);
+                    threatLayer.addLayer(marker);
+                    
+                    // Render Feed Item
+                    const feedItem = document.createElement('div');
+                    feedItem.className = `feed-item severity-${incident.severity}`;
+                    feedItem.innerHTML = `
+                        <div style="font-weight:bold; margin-bottom:4px; color:#c9d1d9;">
+                            ${incident.title} 
+                            <span style="font-size:0.8em; color:#8b949e; float:right;">${incident.severity}</span>
+                        </div>
+                        <div style="color:#58a6ff; font-size: 0.8rem; margin-bottom: 4px;">📍 ${incident.location}</div>
+                        <div style="color:#8b949e;">${incident.summary}</div>
+                    `;
+                    document.getElementById('feed-content').appendChild(feedItem);
+                });
+                
+                // Update KRIs and Status
+                document.getElementById('kri-total').innerText = rawData.incidents.length;
+                document.getElementById('kri-critical').innerText = criticalCount;
+                
+                // Update timestamp based on the first incident (or current time)
+                const updateTime = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                document.getElementById('last-updated').innerText = `Updated: Today at ${updateTime}`;
+                
+            } catch (error) {
+                console.error("Failed to fetch intel:", error);
+                document.getElementById('feed-content').innerHTML = `
+                    <div style="padding: 20px; text-align: center; color: #f85149;">
+                        Failed to load data.json. Ensure your GitHub Action executed properly.
+                    </div>`;
+                document.getElementById('last-updated').innerText = "Sync Failed";
+                document.querySelector('.status-dot').style.backgroundColor = "#f85149";
+            }
+        }
+
+        // Initialize immediately
+        fetchLiveThreatData();
+    </script>
+</body>
+</html>
